@@ -1,32 +1,40 @@
 # frozen_string_literal: true
 
-# app/controllers/auth/sessions_controller.rb
-class Auth::SessionsController < ApplicationController
-  def sign_up
-    user = User.new(sign_up_params)
-    if user.save
-      render json: { id: user.id, email: user.email, name: user.name, role: user.role }, status: :created
-    else
-      render json: { error: user.errors.full_messages }, status: :unprocessable_entity
+module Auth
+  # app/controllers/auth/sessions_controller.rb
+  class Auth::SessionsController < ApplicationController
+    def sign_up
+      user = User.new(sign_up_params)
+      if user.save
+        render json: { id: user.id, email: user.email, name: user.name, role: user.role }, status: :created
+      else
+        render json: { error: user.errors.full_messages }, status: :unprocessable_entity
+      end
     end
-  end
 
-  def create
-    user = User.find_by(email: params[:email].to_s.strip.downcase)
-    return render json: { error: "Invalid credentials" }, status: :unauthorized unless user&.valid_password?(params[:password])
+    def create
+      user = User.find_for_database_authentication(email: params[:email])
+      return render json: { error: "invalid_credentials" }, status: :unauthorized unless user&.valid_password?(params[:password])
 
-    sign_in(user, store: false)
-    render json: { id: user.id, email: user.email, name: user.name, role: user.role }
-  end
+      # Access token curto (header Authorization)
+      access_jwt, _payload = Warden::JWTAuth::UserEncoder.new.call(user, :user, nil)
+      response.set_header("Authorization", "Bearer #{access_jwt}")
 
-  def destroy
-    sign_out(current_user) if current_user
-    head :no_content
-  end
+      # Emite refresh cookie
+      RefreshHandle.new.issue_for(user: user, response: response)
 
-  private
+      render json: { id: user.id, email: user.email, name: user.name, role: user.role }, status: :ok
+    end
 
-  def sign_up_params
-    params.permit(:email, :password, :name, :locale, :timezone)
+    def destroy
+      sign_out(current_user) if current_user
+      head :no_content
+    end
+
+    private
+
+    def sign_up_params
+      params.permit(:email, :password, :name, :locale, :timezone)
+    end
   end
 end

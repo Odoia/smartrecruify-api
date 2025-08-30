@@ -30,6 +30,8 @@ module SmartrecruifyApi
     # Middleware like session, flash, cookies can be added back manually.
     config.api_only = true
 
+    config.middleware.use ActionDispatch::Cookies
+
     # Autoload from lib/, but ignore non-Ruby subfolders
     config.autoload_lib(ignore: %w[assets tasks])
 
