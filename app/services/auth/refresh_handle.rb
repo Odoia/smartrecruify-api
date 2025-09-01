@@ -1,27 +1,19 @@
 # frozen_string_literal: true
 
-# app/services/auth/refresh_handle.rb
 module Auth
+# app/services/auth/refresh_handle.rb
   class RefreshHandle
     def initialize(
-      store: Auth::Tokens::Adapters::RefreshStoreRedis.new,
+      store:  Auth::Tokens::Adapters::RefreshStoreRedis.new,
       cookie: Auth::Refresh::Cookie.new
     )
-      @issue  = Auth::Refresh::Issue.new(store:, cookie:)
-      @rotate = Auth::Refresh::Rotate.new(store:, cookie:)
-      @revoke = Auth::Refresh::Revoke.new(store:, cookie:)
+      @issue  = Auth::Refresh::Issue.new(store: store, cookie: cookie)
+      @rotate = Auth::Refresh::Rotate.new(store: store, cookie: cookie)
+      @revoke = Auth::Refresh::Revoke.new(store: store, cookie: cookie)
     end
 
-    def issue_for(user:, response:)
-      @issue.call(user:, response:)
-    end
-
-    def rotate(request:, response:)
-      @rotate.call(request:, response:)
-    end
-
-    def revoke(request:, response:)
-      @revoke.call(request:, response:)
-    end
+    def issue_for(user:, response:)   = @issue.call(user: user, response: response)
+    def rotate(request:, response:)   = @rotate.call(request: request, response: response)
+    def revoke(request:, response:)   = @revoke.call(request: request, response: response)
   end
 end

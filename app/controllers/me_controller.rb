@@ -1,8 +1,9 @@
-# app/controllers/me_controller.rb
+# frozen_string_literal: true
 class MeController < ApplicationController
-  before_action :authenticate_user!
+  before_action :authenticate_access!
 
   def show
-    render json: { id: current_user.id, email: current_user.email, name: current_user.name, role: current_user.role }
+    Rails.logger.info("ME#show current_user.id=#{current_user&.id}")
+    render json: current_user.slice(:id, :email, :name, :role)
   end
 end

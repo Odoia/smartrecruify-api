@@ -10,14 +10,15 @@ module Auth
       end
 
       def call(request:, response:)
-        raw = @cookie.read(request:)
+        raw = @cookie.read_from(request)
         if raw.present?
-          payload = Jwt.decode!(raw) rescue nil
-          if payload && payload["jti"]
-            @store.revoke!(jti: payload["jti"])
+          begin
+            payload = Jwt.decode!(raw)
+            @store.delete!(payload)
+          rescue JWT::DecodeError
           end
         end
-        @cookie.delete!(response:)
+        @cookie.delete_from(response)
         true
       end
     end

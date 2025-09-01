@@ -4,34 +4,36 @@ module Auth
   module Refresh
     # app/services/auth/refresh/rotate.rb
     class Rotate
-      Result = Struct.new(:jwt, :user, keyword_init: true)
-
       def initialize(store:, cookie:)
         @store  = store
         @cookie = cookie
       end
 
       def call(request:, response:)
-        raw = @cookie.read(request:)
-        raise "Invalid refresh token" if raw.blank?
+        raw = @cookie.read_from(request)
+        raise Errors::InvalidToken if raw.blank?
 
         payload = Jwt.decode!(raw)
-        raise "Invalid refresh type" unless payload["typ"] == "refresh"
+        sub, jti, exp = payload.values_at("sub", "jti", "exp")
+        raise Errors::InvalidToken if [sub, jti, exp].any?(&:nil?)
+        raise Errors::InvalidToken unless @store.valid_for_rotation?(payload)
 
-        jti     = payload.fetch("jti")
-        user_id = @store.fetch_user_id(jti:)
-        raise "Revoked or unknown refresh" if user_id.blank?
+        new_token, new_jti, new_exp = Jwt.mint_for(user_id: sub.to_i)
+        if @store.respond_to?(:rotate!)
+          @store.rotate!(payload, new_jti: new_jti, new_exp: new_exp)
+        else
+          @store.delete!(payload)
+          @store.put!({ "jti" => new_jti, "sub" => sub, "exp" => new_exp })
+        end
 
-        @store.revoke!(jti:)
+        @cookie.write_to(response, new_token, expires_at: Time.at(new_exp))
 
-        new_token, new_jti, new_exp = Jwt.mint_for(user_id:)
-        @store.put!(jti: new_jti, user_id:, exp: new_exp)
-        @cookie.write!(response:, value: new_token, exp: new_exp)
+        access = Auth::Access::Jwt.mint_for(user_id: sub.to_i)
+        response.set_header("Authorization", "Bearer #{access}")
 
-        user = User.find(user_id)
-        access_jwt, _ = Warden::JWTAuth::UserEncoder.new.call(user, :user, nil)
-
-        Result.new(jwt: access_jwt, user:)
+        User.find(sub.to_i)
+      rescue JWT::DecodeError
+        raise Errors::InvalidToken
       end
     end
   end

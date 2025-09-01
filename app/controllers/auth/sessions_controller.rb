@@ -2,7 +2,7 @@
 
 module Auth
   # app/controllers/auth/sessions_controller.rb
-  class Auth::SessionsController < ApplicationController
+  class SessionsController < ApplicationController
     def sign_up
       user = User.new(sign_up_params)
       if user.save
@@ -13,17 +13,21 @@ module Auth
     end
 
     def create
-      user = User.find_for_database_authentication(email: params[:email])
-      return render json: { error: "invalid_credentials" }, status: :unauthorized unless user&.valid_password?(params[:password])
+      user = User.find_by(email: params.dig(:session, :email) || params[:email])
 
-      # Access token curto (header Authorization)
-      access_jwt, _payload = Warden::JWTAuth::UserEncoder.new.call(user, :user, nil)
-      response.set_header("Authorization", "Bearer #{access_jwt}")
+      unless user&.valid_password?(params.dig(:session, :password) || params[:password])
+        return render json: { error: "Invalid email or password" }, status: :unauthorized
+      end
 
-      # Emite refresh cookie
-      RefreshHandle.new.issue_for(user: user, response: response)
+      access = Auth::Access::Jwt.mint_for(user_id: user.id)
+      response.set_header("Authorization", "Bearer #{access}")
 
-      render json: { id: user.id, email: user.email, name: user.name, role: user.role }, status: :ok
+      Auth::RefreshHandle.new.issue_for(user: user, response: response)
+
+      render json: user.slice(:id, :email, :name, :role)
+    rescue => e
+      Rails.logger.info("sign in error: #{e.class}: #{e.message}")
+      head :internal_server_error
     end
 
     def destroy
