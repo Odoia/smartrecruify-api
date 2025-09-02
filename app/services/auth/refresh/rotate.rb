@@ -19,6 +19,7 @@ module Auth
         raise Errors::InvalidToken unless @store.valid_for_rotation?(payload)
 
         new_token, new_jti, new_exp = Jwt.mint_for(user_id: sub.to_i)
+
         if @store.respond_to?(:rotate!)
           @store.rotate!(payload, new_jti: new_jti, new_exp: new_exp)
         else
@@ -30,6 +31,13 @@ module Auth
 
         access = Auth::Access::Jwt.mint_for(user_id: sub.to_i)
         response.set_header("Authorization", "Bearer #{access}")
+
+        begin
+          access_payload = Auth::Access::Jwt.decode!(access)
+          Auth::Tokens::Adapters::AccessStoreRedis.new.put!(access_payload)
+        rescue => e
+          Rails.logger.warn("refresh access-store error: #{e.class}: #{e.message}") if defined?(Rails)
+        end
 
         User.find(sub.to_i)
       rescue JWT::DecodeError

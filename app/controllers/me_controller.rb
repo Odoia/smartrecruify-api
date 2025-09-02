@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 class MeController < ApplicationController
-  before_action :authenticate_access!
+  before_action :authenticate_user!
 
   def show
     Rails.logger.info("ME#show current_user.id=#{current_user&.id}")

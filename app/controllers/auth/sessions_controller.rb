@@ -14,16 +14,21 @@ module Auth
 
     def create
       user = User.find_by(email: params.dig(:session, :email) || params[:email])
-
       unless user&.valid_password?(params.dig(:session, :password) || params[:password])
-        return render json: { error: "Invalid email or password" }, status: :unauthorized
+        return head :unauthorized
       end
 
       access = Auth::Access::Jwt.mint_for(user_id: user.id)
       response.set_header("Authorization", "Bearer #{access}")
 
-      Auth::RefreshHandle.new.issue_for(user: user, response: response)
+      begin
+        access_payload = Auth::Access::Jwt.decode!(access)
+        Auth::Tokens::Adapters::AccessStoreRedis.new.put!(access_payload)
+      rescue => e
+        Rails.logger.warn("sign in access-store error: #{e.class}: #{e.message}")
+      end
 
+      Auth::RefreshHandle.new.issue_for(user: user, response: response)
       render json: user.slice(:id, :email, :name, :role)
     rescue => e
       Rails.logger.info("sign in error: #{e.class}: #{e.message}")
@@ -31,7 +36,15 @@ module Auth
     end
 
     def destroy
-      sign_out(current_user) if current_user
+      token = request.headers["Authorization"]&.split(" ", 2)&.last
+      if token.present?
+        begin
+          payload = Auth::Access::Jwt.decode!(token)
+          Auth::Tokens::Adapters::AccessStoreRedis.new.delete!(payload)
+        rescue JWT::DecodeError
+        end
+      end
+
       head :no_content
     end
 
