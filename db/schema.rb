@@ -10,9 +10,76 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_08_27_211202) do
+ActiveRecord::Schema[8.0].define(version: 2025_09_05_204351) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "course_enrollments", force: :cascade do |t|
+    t.bigint "education_profile_id", null: false
+    t.bigint "course_id", null: false
+    t.integer "status", default: 0, null: false
+    t.date "started_on"
+    t.date "expected_end_on"
+    t.date "completed_on"
+    t.integer "progress_percent"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["course_id"], name: "index_course_enrollments_on_course_id"
+    t.index ["education_profile_id", "course_id"], name: "idx_course_enrollments_unique", unique: true
+    t.index ["education_profile_id"], name: "index_course_enrollments_on_education_profile_id"
+    t.index ["status"], name: "index_course_enrollments_on_status"
+  end
+
+  create_table "courses", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "provider"
+    t.integer "category", default: 0, null: false
+    t.integer "hours"
+    t.text "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["category"], name: "index_courses_on_category"
+    t.index ["name", "provider"], name: "index_courses_on_name_and_provider"
+  end
+
+  create_table "education_profiles", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.integer "highest_degree", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_education_profiles_on_user_id", unique: true
+  end
+
+  create_table "education_records", force: :cascade do |t|
+    t.bigint "education_profile_id", null: false
+    t.integer "degree_level", default: 0, null: false
+    t.string "institution_name", null: false
+    t.string "program_name", null: false
+    t.date "started_on"
+    t.date "expected_end_on"
+    t.date "completed_on"
+    t.integer "status", default: 0, null: false
+    t.float "gpa"
+    t.string "transcript_url"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["education_profile_id", "degree_level"], name: "idx_on_education_profile_id_degree_level_be8bb736b1"
+    t.index ["education_profile_id"], name: "index_education_records_on_education_profile_id"
+    t.index ["status"], name: "index_education_records_on_status"
+  end
+
+  create_table "language_skills", force: :cascade do |t|
+    t.bigint "education_profile_id", null: false
+    t.integer "language", default: 0, null: false
+    t.integer "level", default: 0, null: false
+    t.string "certificate_name"
+    t.string "certificate_score"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["education_profile_id", "language"], name: "idx_language_unique_per_profile", unique: true
+    t.index ["education_profile_id"], name: "index_language_skills_on_education_profile_id"
+    t.index ["level"], name: "index_language_skills_on_level"
+  end
 
   create_table "users", force: :cascade do |t|
     t.string "email", default: "", null: false
@@ -43,4 +110,10 @@ ActiveRecord::Schema[8.0].define(version: 2025_08_27_211202) do
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
     t.index ["role"], name: "index_users_on_role"
   end
+
+  add_foreign_key "course_enrollments", "courses"
+  add_foreign_key "course_enrollments", "education_profiles"
+  add_foreign_key "education_profiles", "users"
+  add_foreign_key "education_records", "education_profiles"
+  add_foreign_key "language_skills", "education_profiles"
 end

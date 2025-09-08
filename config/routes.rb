@@ -4,6 +4,8 @@ Rails.application.routes.draw do
   mount Rswag::Ui::Engine => '/api-docs'
   mount Rswag::Api::Engine => '/api-docs'
 
+  get "up" => "rails/health#show", as: :rails_health_check
+
   scope :auth do
     post   :sign_up,   to: "auth/sessions#sign_up"
     post   :sign_in,   to: "auth/sessions#create"
@@ -14,6 +16,12 @@ Rails.application.routes.draw do
     delete :refresh,   to: "auth/refresh_tokens#destroy"
   end
 
-  get "up" => "rails/health#show", as: :rails_health_check
+  namespace :education do
+    resources :education_records, only: [:index, :create, :update, :destroy]
+    resources :courses, only: [:index, :show]               # catalog browsing
+    resources :course_enrollments, only: [:index, :create, :update, :destroy]
+    resources :language_skills, only: [:index, :create, :update, :destroy]
+  end
+
   get "/me", to: "me#show"
 end
