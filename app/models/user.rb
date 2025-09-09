@@ -8,11 +8,14 @@ class User < ApplicationRecord
 
   has_one  :education_profile, dependent: :destroy
 
-  # through profile
+  # education
   has_many :education_records,    through: :education_profile
   has_many :course_enrollments,   through: :education_profile
   has_many :language_skills,      through: :education_profile
   has_many :courses,              through: :course_enrollments
+
+  # employment
+  has_many :employment_records, dependent: :destroy
 
   # ensure profile exists (útil nos controllers)
   def ensure_education_profile!

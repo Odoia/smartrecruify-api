@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_09_05_204351) do
+ActiveRecord::Schema[8.0].define(version: 2025_09_09_193627) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -68,6 +68,46 @@ ActiveRecord::Schema[8.0].define(version: 2025_09_05_204351) do
     t.index ["status"], name: "index_education_records_on_status"
   end
 
+  create_table "employment_experiences", force: :cascade do |t|
+    t.bigint "employment_record_id", null: false
+    t.string "title", null: false
+    t.text "description"
+    t.string "impact"
+    t.string "skills", default: [], array: true
+    t.string "tools", default: [], array: true
+    t.string "tags", default: [], array: true
+    t.jsonb "metrics", default: {}
+    t.date "started_on"
+    t.date "ended_on"
+    t.integer "order_index", default: 0
+    t.string "reference_url"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["employment_record_id", "order_index"], name: "idx_on_employment_record_id_order_index_0563b63926"
+    t.index ["employment_record_id"], name: "index_employment_experiences_on_employment_record_id"
+    t.index ["metrics"], name: "index_employment_experiences_on_metrics", using: :gin
+    t.index ["skills"], name: "index_employment_experiences_on_skills", using: :gin
+    t.index ["tags"], name: "index_employment_experiences_on_tags", using: :gin
+    t.index ["tools"], name: "index_employment_experiences_on_tools", using: :gin
+  end
+
+  create_table "employment_records", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "company_name", null: false
+    t.string "job_title", null: false
+    t.date "started_on", null: false
+    t.date "ended_on"
+    t.boolean "current", default: false, null: false
+    t.text "job_description"
+    t.text "responsibilities"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["company_name"], name: "index_employment_records_on_company_name"
+    t.index ["current"], name: "index_employment_records_on_current"
+    t.index ["user_id", "started_on"], name: "index_employment_records_on_user_id_and_started_on"
+    t.index ["user_id"], name: "index_employment_records_on_user_id"
+  end
+
   create_table "language_skills", force: :cascade do |t|
     t.bigint "education_profile_id", null: false
     t.integer "language", default: 0, null: false
@@ -115,5 +155,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_09_05_204351) do
   add_foreign_key "course_enrollments", "education_profiles"
   add_foreign_key "education_profiles", "users"
   add_foreign_key "education_records", "education_profiles"
+  add_foreign_key "employment_experiences", "employment_records"
+  add_foreign_key "employment_records", "users"
   add_foreign_key "language_skills", "education_profiles"
 end

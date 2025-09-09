@@ -18,9 +18,15 @@ Rails.application.routes.draw do
 
   namespace :education do
     resources :education_records, only: [:index, :create, :update, :destroy]
-    resources :courses, only: [:index, :show]               # catalog browsing
+    resources :courses, only: [:index, :show] 
     resources :course_enrollments, only: [:index, :create, :update, :destroy]
     resources :language_skills, only: [:index, :create, :update, :destroy]
+  end
+
+  namespace :employment do
+    resources :employment_records, only: [:index, :create, :update, :destroy] do
+      resources :employment_experiences, only: [:index, :create, :update, :destroy]
+    end
   end
 
   get "/me", to: "me#show"
