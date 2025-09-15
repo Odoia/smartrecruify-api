@@ -39,6 +39,11 @@ gem "kamal", require: false            # Containerized deployment
 gem "thruster", require: false         # Puma performance tuning
 
 # --------------------------------------
+# PDF
+# --------------------------------------
+gem "pdf-reader"
+
+# --------------------------------------
 # Development & Test
 # --------------------------------------
 group :development, :test do
