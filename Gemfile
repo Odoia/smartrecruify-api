@@ -6,7 +6,7 @@ ruby "3.4.5"
 # Rails Core
 # --------------------------------------
 gem "rails", "~> 8.0.2", ">= 8.0.2.1"
-gem "pg", "~> 1.1"                     # PostgreSQL
+gem "pg", "~> 1.6"                     # PostgreSQL
 gem "puma", ">= 5.0"                   # Puma web server
 gem "bootsnap", require: false         # Caching to speed up boot time
 
