@@ -30,9 +30,7 @@ Rails.application.routes.draw do
   end
 
   #pdfs importers
-  namespace :importers do
-    resources :pdfs, only: [:create]
-  end
+  resources :documents, only: [:create]
 
   get "/me", to: "me#show"
 end
