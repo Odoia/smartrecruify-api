@@ -47,6 +47,7 @@ gem "ruby-openai", require: "openai"
 # PDF
 # --------------------------------------
 gem "pdf-reader"
+gem "mini_magick"
 
 # --------------------------------------
 # Development & Test
