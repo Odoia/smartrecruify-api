@@ -39,6 +39,11 @@ gem "kamal", require: false            # Containerized deployment
 gem "thruster", require: false         # Puma performance tuning
 
 # --------------------------------------
+# IA
+# --------------------------------------
+gem "ruby-openai", require: "openai"
+
+# --------------------------------------
 # PDF
 # --------------------------------------
 gem "pdf-reader"
@@ -59,6 +64,8 @@ group :development, :test do
   gem "debug", platforms: %i[mri windows], require: "debug/prelude"
   gem "brakeman", require: false             # Security analysis
   gem "rubocop-rails-omakase", require: false # Rails style guide
+  #debug
+  gem 'pry'
 end
 
 # --------------------------------------

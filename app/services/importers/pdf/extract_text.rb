@@ -1,28 +1,19 @@
 # frozen_string_literal: true
-# You can switch this to PDF::Reader, PDF::Inspector, or HexaPDF; keeping it abstract.
+
 require "pdf/reader"
 
 module Importers
   module Pdf
     class ExtractText
-      Result = Struct.new(:raw_text, :pages_text, keyword_init: true)
-
-      def self.call(file:, safe: false)
-        io = file.respond_to?(:path) ? File.open(file.path, "rb") : file.tempfile || file
+      def self.call(file)
+        io = file.respond_to?(:path) ? File.open(file.path, "rb") : file.tempfile
         reader = ::PDF::Reader.new(io)
-        pages = reader.pages.map { |p| sanitize(p.text) }
-        Result.new(raw_text: pages.join("\n"), pages_text: pages)
+        text = reader.pages.map(&:text).join("\n")
+        { ok: true, text: text }
       rescue => e
-        raise e unless safe
-        Result.new(raw_text: "", pages_text: [])
+        { ok: false, error: "unreadable_pdf", message: e.message }
       ensure
-        io.close if io.is_a?(File)
-      end
-
-      # Basic cleanup that helps prompting (trim odd spaces, normalize whitespace)
-      def self.sanitize(text)
-        s = text.to_s.encode("UTF-8", invalid: :replace, undef: :replace, replace: "")
-        s.gsub(/\u00A0/, " ").gsub(/[ \t]+/, " ").gsub(/\s+\n/, "\n").strip
+        io.close if io && !io.closed? rescue nil
       end
     end
   end
