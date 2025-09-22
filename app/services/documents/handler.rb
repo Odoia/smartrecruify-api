@@ -6,7 +6,7 @@ require "fileutils"
 module Documents
   class Handler
     # Roteia por tipo de documento. Por enquanto só PDF.
-    # Sempre retorna { ok: true/false, payload: Hash } quando ok=true
+    # Retorna payload unificado { ok:, ... }
     def self.call(file:, user:, dry_run: false, course_catalog: [])
       content_type = file.content_type.to_s
       extname      = File.extname(file.original_filename.to_s).downcase
@@ -16,7 +16,6 @@ module Documents
       end
 
       tmp_pdf = save_upload(file)
-
       begin
         raw_result = Documents::Pdf::Base.call(
           file_path:      tmp_pdf,
@@ -25,32 +24,21 @@ module Documents
           course_catalog: course_catalog
         )
 
-        # -------------------------------
-        # Normaliza formatos de retorno:
-        # 1) { ok:, payload: {...} }
-        # 2) { ok:, basic:..., employment:..., meta:... } (chapado)
-        # -------------------------------
-        ok_flag = raw_result.is_a?(Hash) ? (raw_result[:ok].nil? ? raw_result["ok"] : raw_result[:ok]) : false
-        unless ok_flag
-          # erro: apenas repassa
-          return raw_result.is_a?(Hash) ? raw_result : { ok: false, error: "import_failed", message: "Unknown error" }
-        end
-
-        payload =
-          if raw_result.is_a?(Hash) && raw_result[:payload].is_a?(Hash)
-            raw_result[:payload]
-          elsif raw_result.is_a?(Hash) && raw_result["payload"].is_a?(Hash)
-            raw_result["payload"]
-          elsif raw_result.is_a?(Hash)
-            # remove chaves de controle comuns e considera o resto como payload
-            raw_result.dup.tap { |h| h.delete(:ok); h.delete("ok"); h.delete(:error); h.delete("error"); h.delete(:message); h.delete("message") }
-          else
-            {}
+        # sanitize (se existir)
+        if raw_result.is_a?(Hash) && raw_result[:ok] && raw_result[:payload].is_a?(Hash)
+          if defined?(Documents::SanitizePayload)
+            raw_result[:payload] = Documents::SanitizePayload.call(raw_result[:payload])
           end
 
-        sanitized = Documents::SanitizePayload.call(payload)
+          # 🔽 Persiste EDUCATION somente quando não for dry_run
+          if !dry_run
+            edu_summary = Documents::Persisters::Education.call(user: user, payload: raw_result[:payload])
+            raw_result[:persisted] ||= {}
+            raw_result[:persisted][:education] = edu_summary
+          end
+        end
 
-        { ok: true, payload: sanitized }
+        raw_result
       ensure
         FileUtils.rm_f(tmp_pdf) if tmp_pdf && File.exist?(tmp_pdf)
       end
@@ -65,8 +53,9 @@ module Documents
     end
 
     def self.save_upload(file)
-      dir = Dir.mktmpdir("doc_upload")
-      path = File.join(dir, (file.original_filename.presence || "upload.pdf"))
+      dir  = Dir.mktmpdir("doc_upload")
+      name = file.original_filename.presence || "upload.pdf"
+      path = File.join(dir, name)
       File.open(path, "wb") { |f| f.write(file.read) }
       path
     end
