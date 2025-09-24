@@ -1,63 +1,66 @@
 # frozen_string_literal: true
 
-# app/controllers/employment/experiences_controller.rb
 module Employment
+  # app/controllers/employment/experiences_controller.rb
   class EmploymentExperiencesController < ApplicationController
     before_action :authenticate_user!
-    before_action :set_employment_record
-    before_action :set_experience, only: [:update, :destroy]
+    before_action :load_employment_record
+    before_action :load_experience, only: [:update, :destroy]
 
     def index
-      experiences = @employment_record.employment_experiences
-                                      .order(:order_index, started_on: :desc, created_at: :desc)
-      render json: experiences
+      experiences = ::Employment::Experiences::List.new(
+        employment_record: @employment_record
+      ).call
+      render json: experiences, status: :ok
     end
 
     def create
-      exp = @employment_record.employment_experiences.new(experience_params)
-      if exp.save
-        render json: exp, status: :created
-      else
-        render json: { error: "validation_failed", details: exp.errors.full_messages }, status: :unprocessable_entity
-      end
+      exp = ::Employment::Experiences::Create.new(
+        employment_record: @employment_record,
+        params: experience_params
+      ).call
+      render json: exp, status: :created
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { error: "validation_failed", details: e.record.errors.full_messages }, status: :unprocessable_entity
     end
 
     def update
-      if @experience.update(experience_params)
-        render json: @experience
-      else
-        render json: { error: "validation_failed", details: @experience.errors.full_messages }, status: :unprocessable_entity
-      end
+      exp = ::Employment::Experiences::Update.new(
+        experience: @experience,
+        params: experience_params
+      ).call
+      render json: exp, status: :ok
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { error: "validation_failed", details: e.record.errors.full_messages }, status: :unprocessable_entity
     end
 
     def destroy
-      @experience.destroy!
+      ::Employment::Experiences::Destroy.new(experience: @experience).call
       head :no_content
     end
 
     private
 
-    def set_employment_record
-      @employment_record = current_user.employment_records.find(params[:employment_record_id])
+    def load_employment_record
+      id = params[:employment_record_id] || params[:id]
+      @employment_record = ::Employment::Records::Find.new(
+        user: current_user,
+        id: id
+      ).call
     end
 
-    def set_experience
-      @experience = @employment_record.employment_experiences.find(params[:id])
+    def load_experience
+      @experience = ::Employment::Experiences::Find.new(
+        employment_record: @employment_record,
+        id: params[:id]
+      ).call
     end
 
     def experience_params
       params.require(:employment_experience).permit(
-        :title,
-        :description,
-        :impact,
-        :started_on,
-        :ended_on,
-        :order_index,
-        :reference_url,
-        skills: [],
-        tools:  [],
-        tags:   [],
-        metrics: {}
+        :title, :description, :impact,
+        :started_on, :ended_on, :order_index, :reference_url,
+        skills: [], tools: [], tags: [], metrics: {}
       )
     end
   end
