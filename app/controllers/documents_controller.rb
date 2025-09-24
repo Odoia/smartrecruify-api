@@ -1,39 +1,32 @@
 # frozen_string_literal: true
 
+# app/controllers/documents_controller.rb
 class DocumentsController < ApplicationController
-  before_action :authenticate_user!
+  include Auth::AccessGuard
+  before_action :require_user!
 
   # POST /documents
-  # Params:
-  #   file     -> uploaded file (required)
-  #   dry_run  -> boolean (optional)
-  #   debug    -> boolean (optional)
+  # Params: file (PDF). Sem persistência.
   def create
-    file   = params[:file]
-    dry    = ActiveModel::Type::Boolean.new.cast(params[:dry_run])
-    debug  = ActiveModel::Type::Boolean.new.cast(params[:debug])
+    file = params.require(:file)
 
-    return render json: { ok: false, error: "file_missing" }, status: :unprocessable_content if file.blank?
+    payload = Documents::Pdf::Orchestrator.new(
+      file: file,
+      user: current_user,
+      include_catalog: true
+    ).call
 
-    # catálogo de cursos enxuto para o prompt
-    courses = Course.order(Arel.sql("LOWER(provider), LOWER(name)")).limit(50)
-    catalog = courses.map { |c| [c.provider, c.name, c.hours].compact.join(" | ") }
-
-    result = ::Documents::Handler.call(
-      file:            file,
-      user:            current_user,
-      dry_run:         dry,
-      course_catalog:  catalog
-    )
-
-    if result[:ok]
-      payload = debug ? result.merge(meta: (result[:meta] || {}).merge(debug: { dry_run: dry })) : result
-      render json: payload, status: :ok
-    else
-      code = (result[:error].to_s == "import_failed" ? :internal_server_error : :unprocessable_content)
-      render json: result, status: code
-    end
+    render json: { ok: true, payload: payload }, status: :ok
+  rescue ActionController::ParameterMissing
+    render json: { ok: false, error: "missing_file_param" }, status: :bad_request
   rescue => e
-    render json: { ok: false, error: "import_failed", message: e.message }, status: :internal_server_error
+    Rails.logger.error("[DOCUMENTS#create] #{e.class}: #{e.message}")
+    render json: { ok: false, error: e.message }, status: :unprocessable_entity
+  end
+
+  private
+
+  def require_user!
+    head :unauthorized unless current_user
   end
 end
