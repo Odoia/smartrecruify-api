@@ -20,7 +20,7 @@ module Documents
         ).call
         raw_json   = AiCaller.new(prompt: prompt).call
 
-        Documents::Sanitize.new(payload: raw_json).call
+        ::Documents::SanitizePayload.new(payload: raw_json).call
       end
 
       private

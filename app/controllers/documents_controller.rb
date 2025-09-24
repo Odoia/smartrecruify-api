@@ -21,7 +21,7 @@ class DocumentsController < ApplicationController
     render json: { ok: false, error: "missing_file_param" }, status: :bad_request
   rescue => e
     Rails.logger.error("[DOCUMENTS#create] #{e.class}: #{e.message}")
-    render json: { ok: false, error: e.message }, status: :unprocessable_entity
+    render json: { ok: false, error: e.message }, status: :unprocessable_content
   end
 
   private
