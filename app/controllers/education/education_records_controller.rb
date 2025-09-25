@@ -1,13 +1,18 @@
+# frozen_string_literal: true
+
 # app/controllers/education/education_records_controller.rb
 class Education::EducationRecordsController < ApplicationController
   before_action :authenticate_user!
 
-  # Lists all formal education records for the current user's education profile.
   def index
-    render json: education_profile.education_records.order(created_at: :desc)
+    records = Education::EducationRecords::List.new(
+      profile: education_profile,
+      filters: filter_params.to_h.symbolize_keys
+    ).call
+
+    render json: records, status: :ok
   end
 
-  # Creates a new formal education record (e.g., Bachelor in progress).
   def create
     record = Education::EducationRecords::Create.call(
       profile: education_profile,
@@ -16,14 +21,17 @@ class Education::EducationRecordsController < ApplicationController
     render json: record, status: :created
   end
 
-  # Updates an existing formal education record.
   def update
     record = education_profile.education_records.find(params[:id])
-    Education::EducationRecords::Update.call(record: record, params: education_record_params)
-    render json: record
+
+    Education::EducationRecords::Update.call(
+      record: record,
+      params: education_record_params
+    )
+
+    render json: record, status: :ok
   end
 
-  # Deletes a formal education record.
   def destroy
     record = education_profile.education_records.find(params[:id])
     Education::EducationRecords::Destroy.call(record: record)
@@ -37,10 +45,24 @@ class Education::EducationRecordsController < ApplicationController
   end
 
   def education_record_params
-    params.require(:education_record).permit(
-      :degree_level, :institution_name, :program_name,
-      :started_on, :expected_end_on, :completed_on,
-      :status, :gpa, :transcript_url
-    )
+    params
+      .require(:education_record)
+      .permit(
+        :degree_level,
+        :institution_name,
+        :program_name,
+        :started_on,
+        :expected_end_on,
+        :completed_on,
+        :status,
+        :gpa,
+        :transcript_url
+      )
+  end
+
+  def filter_params
+    params
+      .fetch(:filter, {})
+      .permit(:status, :institution_name, :degree_level)
   end
 end

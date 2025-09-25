@@ -29,7 +29,11 @@ module Documents
 
       def course_catalog
         return [] unless include_catalog
-        @course_catalog ||= Education::CourseEnrollments::List.new.call
+
+        @course_catalog ||= Education::Courses::List.new(
+          filters: {},
+          limit: 50
+        ).call
       end
     end
   end

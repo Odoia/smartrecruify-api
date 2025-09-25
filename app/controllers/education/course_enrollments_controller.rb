@@ -1,35 +1,54 @@
+# frozen_string_literal: true
+
 # app/controllers/education/course_enrollments_controller.rb
 class Education::CourseEnrollmentsController < ApplicationController
   before_action :authenticate_user!
 
-  # Lists all course enrollments for the current user's education profile.
   def index
-    render json: education_profile.course_enrollments.includes(:course).order(created_at: :desc).as_json(include: :course)
+    enrollments = Education::CourseEnrollments::List
+      .new(profile: education_profile, filters: filter_params.to_h.symbolize_keys)
+      .call
+
+    render json: enrollments, status: :ok
   end
 
-  # Enrolls into a course (status defaults to enrolled or in_progress per params).
   def create
-    course = Course.find(params.require(:course_id))
+    attrs     = enrollment_params.to_h.symbolize_keys
+    course_id = attrs.delete(:course_id)
+
     enrollment = Education::CourseEnrollments::Enroll.call(
-      profile: education_profile,
-      course: course,
-      params: enrollment_params
+      profile:   education_profile,
+      course_id: course_id,
+      attrs:     attrs
     )
+
     render json: enrollment, status: :created
+  rescue ActiveRecord::RecordNotFound
+    render json: { error: "course_not_found" }, status: :not_found
+  rescue ActiveRecord::RecordInvalid => e
+    render json: { error: "validation_failed", details: e.record.errors.full_messages }, status: :unprocessable_entity
   end
 
-  # Updates progress/status/dates for an enrollment.
   def update
     enrollment = education_profile.course_enrollments.find(params[:id])
-    Education::CourseEnrollments::UpdateProgress.call(enrollment: enrollment, params: enrollment_params)
-    render json: enrollment
+
+    Education::CourseEnrollments::UpdateProgress
+      .new(enrollment: enrollment, attrs: enrollment_update_params) # <-- aqui
+      .call
+
+    render json: enrollment, status: :ok
+  rescue ActiveRecord::RecordNotFound
+    render json: { error: "enrollment_not_found" }, status: :not_found
+  rescue ActiveRecord::RecordInvalid => e
+    render json: { error: "validation_failed", details: e.record.errors.full_messages }, status: :unprocessable_entity
   end
 
-  # Removes an enrollment.
   def destroy
     enrollment = education_profile.course_enrollments.find(params[:id])
     enrollment.destroy!
     head :no_content
+  rescue ActiveRecord::RecordNotFound
+    render json: { error: "enrollment_not_found" }, status: :not_found
   end
 
   private
@@ -39,8 +58,22 @@ class Education::CourseEnrollmentsController < ApplicationController
   end
 
   def enrollment_params
-    params.require(:course_enrollment).permit(
-      :status, :started_on, :expected_end_on, :completed_on, :progress_percent
-    )
+    params
+      .require(:course_enrollment)
+      .permit(:course_id, :status, :started_on, :expected_end_on, :completed_on, :progress_percent)
+  end
+
+  def enrollment_update_params
+    params
+      .require(:course_enrollment)
+      .permit(:status, :started_on, :expected_end_on, :completed_on, :progress_percent)
+      .to_h
+      .symbolize_keys
+  end
+
+  def filter_params
+    params
+      .fetch(:filter, {})
+      .permit(:status, :course_id, :started_on_from, :started_on_to)
   end
 end

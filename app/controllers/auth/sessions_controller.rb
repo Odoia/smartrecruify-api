@@ -4,18 +4,33 @@ module Auth
   # app/controllers/auth/sessions_controller.rb
   class SessionsController < ApplicationController
     def sign_up
-      user = User.new(sign_up_params)
+      attrs = sign_up_params
+      user  = User.new(attrs)
+
       if user.save
-        render json: { id: user.id, email: user.email, name: user.name, role: user.role }, status: :created
+        render json: { user: user.slice(:id, :email, :name, :role) }, status: :created
       else
-        render json: { error: user.errors.full_messages }, status: :unprocessable_entity
+        render json: { error: "validation_failed", details: user.errors.full_messages }, status: :unprocessable_entity
       end
+    rescue ActionController::ParameterMissing
+      render json: { error: "invalid_payload", hint: "expected { auth: { email, password, ... } }" }, status: :bad_request
     end
 
     def create
-      user = User.find_by(email: params.dig(:session, :email) || params[:email])
-      unless user&.valid_password?(params.dig(:session, :password) || params[:password])
-        return head :unauthorized
+      creds = sign_in_params
+
+      email    = creds[:email].to_s.strip.downcase
+      password = creds[:password].to_s
+
+      if email.blank? || password.blank?
+        return render json: { error: "invalid_credentials" }, status: :unauthorized
+      end
+
+      user = User.find_by("LOWER(email) = ?", email)
+
+      unless user&.valid_password?(password)
+        Rails.logger.info("[SIGN IN] invalid credentials for email=#{email.inspect}") if Rails.env.development?
+        return render json: { error: "invalid_credentials" }, status: :unauthorized
       end
 
       access = Auth::Access::Jwt.mint_for(user_id: user.id)
@@ -29,7 +44,10 @@ module Auth
       end
 
       Auth::RefreshHandle.new.issue_for(user: user, response: response)
-      render json: user.slice(:id, :email, :name, :role)
+
+      render json: { user: user.slice(:id, :email, :name, :role) }, status: :ok
+    rescue ActionController::ParameterMissing
+      render json: { error: "invalid_payload", hint: "expected { auth: { email, password } }" }, status: :bad_request
     rescue => e
       Rails.logger.info("sign in error: #{e.class}: #{e.message}")
       head :internal_server_error
@@ -51,7 +69,11 @@ module Auth
     private
 
     def sign_up_params
-      params.permit(:email, :password, :name, :locale, :timezone)
+      params.require(:auth).permit(:email, :password, :name, :locale, :timezone)
+    end
+
+    def sign_in_params
+      params.require(:auth).permit(:email, :password)
     end
   end
 end

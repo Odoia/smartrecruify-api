@@ -7,19 +7,23 @@ module Education
 
     def index
       profile = load_profile
-      skills  = Education::LanguageSkills::List.new(profile: profile).call
-      render json: skills
+
+      skills = Education::LanguageSkills::List.new(
+        profile: profile,
+        filters: filter_params.to_h.symbolize_keys
+      ).call
+
+      render json: skills, status: :ok
     end
 
     def create
       profile = load_profile
-      payload = params.require(:language_skill).permit(:language, :level, :certificate_name, :certificate_score)
 
       skill = Education::LanguageSkills::Upsert.new(
-        profile: profile,
-        language: payload[:language],
-        level: payload[:level],
-        attrs: payload.except(:language, :level)
+        profile:  profile,
+        language: language_skill_params[:language],
+        level:    language_skill_params[:level],
+        attrs:    language_skill_params.except(:language, :level)
       ).call
 
       render json: skill, status: :created
@@ -27,15 +31,14 @@ module Education
 
     def update
       profile = load_profile
-      payload = params.require(:language_skill).permit(:language, :level, :certificate_name, :certificate_score)
 
       skill = Education::LanguageSkills::Update.new(
         profile: profile,
-        id: params[:id],
-        attrs: payload
+        id:      params[:id],
+        attrs:   language_skill_params
       ).call
 
-      render json: skill
+      render json: skill, status: :ok
     end
 
     def destroy
@@ -43,7 +46,7 @@ module Education
 
       Education::LanguageSkills::Destroy.new(
         profile: profile,
-        id: params[:id]
+        id:      params[:id]
       ).call
 
       head :no_content
@@ -53,6 +56,18 @@ module Education
 
     def load_profile
       Education::Profiles::Load.new(user: current_user).call
+    end
+
+    def language_skill_params
+      params
+        .require(:language_skill)
+        .permit(:language, :level, :certificate_name, :certificate_score)
+    end
+
+    def filter_params
+      params
+        .fetch(:filter, {})
+        .permit(:language, :level)
     end
   end
 end

@@ -14,21 +14,25 @@ module Employment
     def create
       record = ::Employment::Records::Create.new(
         user: current_user,
-        params: employment_record_params
+        params: employment_record_params.to_h
       ).call
+
       render json: record, status: :created
     rescue ActiveRecord::RecordInvalid => e
-      render json: { error: "validation_failed", details: e.record.errors.full_messages }, status: :unprocessable_entity
+      render json: { error: "validation_failed", details: e.record.errors.full_messages },
+             status: :unprocessable_entity
     end
 
     def update
       record = ::Employment::Records::Update.new(
         record: @employment_record,
-        params: employment_record_params
+        params: employment_record_params.to_h
       ).call
+
       render json: record, status: :ok
     rescue ActiveRecord::RecordInvalid => e
-      render json: { error: "validation_failed", details: e.record.errors.full_messages }, status: :unprocessable_entity
+      render json: { error: "validation_failed", details: e.record.errors.full_messages },
+             status: :unprocessable_entity
     end
 
     def destroy
@@ -39,10 +43,10 @@ module Employment
     private
 
     def load_employment_record
-      id = params[:employment_record_id] || params[:id]
+      record_id = params[:employment_record_id] || params[:id]
       @employment_record = ::Employment::Records::Find.new(
         user: current_user,
-        id: id
+        id: record_id
       ).call
     end
 

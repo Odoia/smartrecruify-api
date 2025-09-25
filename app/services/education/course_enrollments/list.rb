@@ -1,24 +1,38 @@
 # frozen_string_literal: true
 
-# app/services/education/course_enrollments/list.rb
 module Education
   module CourseEnrollments
     class List
-      def initialize(limit: 50)
-        @limit = limit
+      def initialize(profile:, filters: {})
+        @profile = profile
+        @filters = filters || {}
       end
 
       def call
-        Course
-          .order(Arel.sql("LOWER(provider), LOWER(name)"))
-          .limit(@limit)
-          .pluck(:provider, :name)
-          .map { |provider, name| { provider:, name: } }
+        scope = profile.course_enrollments.includes(:course)
+
+        if filters[:status].present?
+          scope = scope.where(status: filters[:status])
+        end
+
+        if filters[:course_id].present?
+          scope = scope.where(course_id: filters[:course_id])
+        end
+
+        if filters[:started_on_from].present?
+          scope = scope.where("started_on >= ?", filters[:started_on_from])
+        end
+
+        if filters[:started_on_to].present?
+          scope = scope.where("started_on <= ?", filters[:started_on_to])
+        end
+
+        scope.order(created_at: :desc)
       end
 
       private
 
-      attr_reader :limit
+      attr_reader :profile, :filters
     end
   end
 end

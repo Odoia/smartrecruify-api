@@ -1,21 +1,8 @@
-# frozen_string_literal: true
-
 # app/controllers/documents_controller.rb
 class DocumentsController < ApplicationController
   include Auth::AccessGuard
   before_action :require_user!
 
-  # POST /documents
-  # Params:
-  #   - file: PDF (obrigatório)
-  #   - dry_run: boolean (default: true) -> se false, persiste education + employment
-  #
-  # Resposta:
-  #   {
-  #     ok: true,
-  #     payload: { ...sanitizado... },
-  #     persist: { ok: true, results: { education: {...}, employment: {...} } } # quando dry_run=false
-  #   }
   def create
     file    = params.require(:file)
     dry_run = ActiveModel::Type::Boolean.new.cast(params[:dry_run].presence || true)
@@ -25,11 +12,6 @@ class DocumentsController < ApplicationController
       user: current_user,
       include_catalog: true
     ).call
-
-    # if dry_run
-    #   render json: { ok: true, payload: payload }, status: :ok
-    #   return
-    # end
 
     persist_result = Documents::Persisters::Handler.new(
       user_id: current_user.id,
