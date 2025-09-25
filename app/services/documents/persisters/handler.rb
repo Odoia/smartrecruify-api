@@ -2,65 +2,28 @@
 
 module Documents
   module Persisters
-    # Recebe o payload completo do PDF e despacha
-    # para os persisters específicos (Education, Employment, etc).
     class Handler
-      DISPATCH_MAP = {
-        education: Documents::Persisters::Education
-        # employment: Documents::Persisters::Employment,
-        # skills:     Documents::Persisters::Skills,
-      }.freeze
-
-      KEY_ALIASES = {
-        "education_records" => :education,
-        :education_records  => :education
-      }.freeze
-
-      def self.call(user_id:, payload:)
-        new(user_id:, payload:).call
-      end
-
       def initialize(user_id:, payload:)
         @user_id = user_id
         @payload = payload || {}
-        @results = {}
       end
 
       def call
-        inner = (@payload[:payload] || @payload["payload"] || {})
-        return ok if inner.blank?
+        results = {}
 
-        extract_sections(inner).each do |section_key, items|
-          persister = DISPATCH_MAP[section_key]
-          next unless persister
-
-          result = safe_call(persister, items)
-          @results[section_key] = result
+        ActiveRecord::Base.transaction do
+          results[:education]  = Education.new(user_id: user_id, items: @payload["education_records"]).call
+          results[:employment] = Employment.new(user_id: user_id, items: @payload["employment"]).call
         end
 
-        ok
+        { ok: true, results: results }
+      rescue => e
+        { ok: false, error: e.message }
       end
 
       private
 
-      def extract_sections(inner)
-        sections = {}
-        KEY_ALIASES.each do |raw_key, normalized|
-          value = inner[raw_key] || inner[raw_key.to_s] || inner[raw_key.to_sym]
-          sections[normalized] = Array(value) if value.present?
-        end
-        sections
-      end
-
-      def safe_call(klass, items)
-        klass.call(user_id: @user_id, items:)
-      rescue => e
-        { result: false, error: e.message }
-      end
-
-      def ok
-        { result: true, dispatched: @results }
-      end
+      attr_reader :user_id
     end
   end
 end

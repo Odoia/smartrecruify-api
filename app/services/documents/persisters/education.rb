@@ -2,93 +2,133 @@
 
 module Documents
   module Persisters
+    # app/services/documents/persisters/education.rb
     class Education
-      def self.call(user_id:, items:)
-        new(user_id:, items:).call
-      end
-
       def initialize(user_id:, items:)
         @user_id = user_id
         @items   = Array(items)
-        @results = []
       end
 
+      # Upsert de EducationRecord via EducationProfile
+      # Chave natural: [institution_name, program_name, started_on, completed_on]
       def call
-        Rails.logger.info("[PERSISTERS::EDUCATION] user=#{@user_id} items=#{@items.size}")
-        return ok(0) if @items.empty?
+        return ok(0, []) if @items.empty?
 
-        profile = find_or_create_profile!(@user_id)
+        model   = ::EducationRecord
+        cols    = model.column_names
+        profile = ::EducationProfile.find_or_create_by!(user_id: @user_id)
 
-        ActiveRecord::Base.transaction do
-          @items.each do |raw|
-            n = normalize(raw) # mantém shape do payload, convertendo datas p/ Date
-            Rails.logger.info("[PERSISTERS::EDUCATION] normalized=#{n.inspect}")
+        changed = []
+        errors  = []
 
-            # Idempotência: 1 registro por (instituição + programa + início + fim)
-            record = ::EducationRecord.find_or_initialize_by(
-              education_profile_id: profile.id,
-              institution_name: n[:institution_name],
-              program_name:     n[:program_name],
-              started_on:       n[:started_on],
-              ended_on:         n[:ended_on]
-            )
+        @items.each_with_index do |raw, idx|
+          src = raw.to_h.transform_keys(&:to_s)
 
-            action = record.new_record? ? :created : :updated
+          completed_on = src["completed_on"].presence || src["ended_on"].presence
+          started_on   = src["started_on"].presence
 
-            # Atribui apenas colunas existentes no modelo para evitar NoMethodError
-            assign_attrs(record, n)
+          # chave natural
+          key = { education_profile_id: profile.id }
+          key[:institution_name] = src["institution_name"] if cols.include?("institution_name")
+          key[:program_name]     = src["program_name"]     if cols.include?("program_name")
+          key[:started_on]       = started_on              if cols.include?("started_on")   && started_on.present?
+          key[:completed_on]     = completed_on            if cols.include?("completed_on") && completed_on.present?
 
-            record.save!
-            Rails.logger.info("[PERSISTERS::EDUCATION] #{action} id=#{record.id}")
-            @results << { action:, id: record.id }
+          rec = model.find_or_initialize_by(key)
+
+          # attrs do payload → colunas
+          attrs = {}
+          attrs["institution_name"] = src["institution_name"] if cols.include?("institution_name")
+          attrs["program_name"]     = src["program_name"]     if cols.include?("program_name")
+          attrs["started_on"]       = started_on              if cols.include?("started_on")
+          attrs["expected_end_on"]  = src["expected_end_on"]  if cols.include?("expected_end_on")
+          attrs["completed_on"]     = completed_on            if cols.include?("completed_on")
+          attrs["gpa"]              = src["gpa"]              if cols.include?("gpa")
+          attrs["transcript_url"]   = src["transcript_url"]   if cols.include?("transcript_url")
+
+          # enums (Rails aceitará string do key do enum)
+          if cols.include?("degree_level")
+            attrs["degree_level"] = coerce_degree_level(model, src["degree_level"])
+          end
+
+          if cols.include?("status")
+            attrs["status"] = coerce_status(model, src["status"])
+          end
+
+          # regra do modelo: completed_on ⇒ status == "completed"
+          if attrs["completed_on"].present? && cols.include?("status")
+            attrs["status"] = "completed"
+          end
+
+          begin
+            rec.assign_attributes(attrs)
+            action = rec.new_record? ? :created : :updated
+            rec.save!
+            changed << { id: rec.id, action: action }
+          rescue ActiveRecord::RecordInvalid => e
+            errors << { index: idx, key:, errors: rec.errors.full_messages }
+          rescue => e
+            errors << { index: idx, key:, errors: [e.message] }
           end
         end
 
-        ok(@results.size, @results)
+        if errors.any?
+          { ok: false, count: changed.size, items: changed, errors: errors }
+        else
+          ok(changed.size, changed)
+        end
       rescue => e
-        Rails.logger.error("[PERSISTERS::EDUCATION] ERROR #{e.class}: #{e.message}")
-        { result: false, error: e.message }
+        error(e)
       end
 
       private
 
-      def find_or_create_profile!(user_id)
-        ::EducationProfile.find_or_create_by!(user_id: user_id)
-      end
+      # mapeia strings soltas dos status para keys do enum
+      def coerce_status(model, value)
+        return nil if value.nil?
+        return value if !model.respond_to?(:statuses)
 
-      # Mantém nomes do teu payload: institution_name, degree_level, program_name, started_on, expected_end_on, ended_on, status, gpa, transcript_url
-      def normalize(raw)
-        {
-          institution_name: safe_str(raw[:institution_name] || raw["institution_name"]),
-          degree_level:     safe_str(raw[:degree_level]     || raw["degree_level"]),
-          program_name:     safe_str(raw[:program_name]     || raw["program_name"]),
-          started_on:       parse_date(raw[:started_on]     || raw["started_on"]),
-          expected_end_on:  parse_date(raw[:expected_end_on]|| raw["expected_end_on"]),
-          ended_on:         parse_date(raw[:ended_on]       || raw["ended_on"]),
-          status:           (raw[:status] || raw["status"]).to_s.presence,
-          gpa:              raw[:gpa] || raw["gpa"],
-          transcript_url:   safe_str(raw[:transcript_url]   || raw["transcript_url"])
+        v = value.to_s.strip.downcase
+        return v if model.statuses.key?(v)
+
+        aliases = {
+          "in progress" => "in_progress",
+          "ongoing"     => "in_progress",
+          "enrolado"    => "enrolled",
+          "concluido"   => "completed",
+          "concluído"   => "completed",
+          "pausado"     => "paused",
+          "trancado"    => "paused",
+          "desistiu"    => "dropped"
         }
+        aliases[v] || v
       end
 
-      def assign_attrs(record, attrs_hash)
-        allowed = record.attribute_names.map!(&:to_sym)
-        record.assign_attributes(attrs_hash.slice(*allowed))
+      # normaliza degree_level para enum (pt/en)
+      def coerce_degree_level(model, value)
+        return nil if value.nil?
+        return value if !model.respond_to?(:degree_levels)
+
+        v = value.to_s.strip.downcase
+        norm = case v
+        when "fundamental", "primario", "primário"      then "primary"
+        when "secundario", "secundário"                 then "secondary"
+        when "ensino medio", "ensino médio", "colegial" then "high_school"
+        when "tecnico", "técnico", "vocação", "vocational" then "vocational"
+        when "tecnologo", "tecnólogo", "associate"      then "associate"
+        when "bachelor", "bacharelado", "bacharalado"   then "bachelor"
+        when "pos", "pós", "pos-graduacao", "pós-graduação", "postgraduate" then "postgraduate"
+        when "mestre", "mestrado", "master"             then "master"
+        when "doutor", "doutorado", "phd", "doctorate"  then "doctorate"
+        else v
+        end
+
+        return norm if model.degree_levels.key?(norm)
+        v
       end
 
-      def parse_date(v)
-        return nil if v.nil? || v.to_s.strip.empty?
-        v.is_a?(Date) ? v : Date.parse(v.to_s) rescue nil
-      end
-
-      def safe_str(v)
-        s = v.to_s.strip
-        s.empty? ? nil : s
-      end
-
-      def ok(count, items = [])
-        { result: true, count:, items: }
-      end
+      def ok(count, items); { ok: true, count:, items: }; end
+      def error(e);         { ok: false, error: e.message }; end
     end
   end
 end

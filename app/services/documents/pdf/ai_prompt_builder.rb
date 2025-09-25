@@ -1,3 +1,4 @@
+# app/services/documents/pdf/ai_prompt_builder.rb
 # frozen_string_literal: true
 
 require "base64"
@@ -55,12 +56,12 @@ module Documents
             "education_records": [
               {
                 "institution_name": string,
-                "degree_level": string|null,
+                "degree_level": "primary"|"secondary"|"high_school"|"vocational"|"associate"|"bachelor"|"postgraduate"|"master"|"doctorate"|null,
                 "program_name": string|null,
-                "started_on": string|null,
-                "expected_end_on": string|null,
-                "ended_on": string|null,
-                "status": "completed"|"in_progress",
+                "started_on": string|null,          // YYYY-MM-DD (use 01 for unknown month/day)
+                "expected_end_on": string|null,     // YYYY-MM-DD
+                "completed_on": string|null,        // YYYY-MM-DD  (NOTE: not 'ended_on')
+                "status": "enrolled"|"in_progress"|"completed"|"paused"|"dropped"|null,
                 "gpa": string|null,
                 "transcript_url": string|null
               }
@@ -77,12 +78,12 @@ module Documents
               {
                 "company_name": string,
                 "job_title": string,
-                "started_on": string,
-                "ended_on": string|null,
+                "started_on": string,               // YYYY-MM-DD
+                "ended_on": string|null,            // null or YYYY-MM-DD
                 "current": boolean,
                 "location": string|null,
                 "job_description": string|null,
-                "responsibilities": string|null,
+                "responsibilities": string|null,    // bullets joined with "\n"
                 "experiences": [
                   {
                     "title": string,
@@ -114,14 +115,23 @@ module Documents
           - Parse the IMAGES as OCR. Do not hallucinate: if uncertain, leave the field null.
           - Dates MUST be ISO (YYYY-MM-DD). When the day is unknown, use the first day of the month (YYYY-MM-01).
             When both month and day are unknown, use January 01 (YYYY-01-01).
+
+          EDUCATION:
+          - Use the field "completed_on" (NOT "ended_on") for education completion dates.
+          - If "completed_on" is present, set "status" = "completed".
+          - Degree levels must be one of: primary, secondary, high_school, vocational, associate, bachelor, postgraduate, master, doctorate.
+
+          EMPLOYMENT:
           - If a job end date is "Present" or similar, set "ended_on": null and "current": true. Otherwise "current": false.
+
+          NORMALIZATION:
           - Normalize phone to digits only (keep country code digits if present).
           - Expand linkedin/github to full URLs when possible.
           - Join responsibility bullets with newline.
           - Keep arrays present even if empty.
           - Output ONLY the JSON object — no prose.
 
-          LANGUAGE extraction:
+          LANGUAGES:
           - Only populate "languages" when there is explicit proficiency evidence (e.g., "English: B2", "Fluent English").
           - Map common phrases to CEFR (e.g., "Fluent" -> C1; "Intermediate" -> B1; etc.).
 
