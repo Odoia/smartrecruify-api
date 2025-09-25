@@ -1,44 +1,58 @@
-# app/controllers/education/language_skills_controller.rb
-class Education::LanguageSkillsController < ApplicationController
-  before_action :authenticate_user!
+# frozen_string_literal: true
 
-  # Lists all language skills for the current user's education profile.
-  def index
-    render json: education_profile.language_skills.order(language: :asc)
-  end
+module Education
+  # app/controllers/education/language_skills_controller.rb
+  class LanguageSkillsController < ApplicationController
+    before_action :authenticate_user!
 
-  # Creates or updates (upsert) a language skill for the profile.
-  def create
-    skill = Education::LanguageSkills::Upsert.call(
-      profile: education_profile,
-      language: params.require(:language_skill)[:language],
-      level: params.require(:language_skill)[:level],
-      attrs: language_skill_params.except(:language, :level)
-    )
-    render json: skill, status: :created
-  end
+    def index
+      profile = load_profile
+      skills  = Education::LanguageSkills::List.new(profile: profile).call
+      render json: skills
+    end
 
-  # Updates a specific language skill (by id).
-  def update
-    skill = education_profile.language_skills.find(params[:id])
-    skill.update!(language_skill_params)
-    render json: skill
-  end
+    def create
+      profile = load_profile
+      payload = params.require(:language_skill).permit(:language, :level, :certificate_name, :certificate_score)
 
-  # Deletes a language skill.
-  def destroy
-    skill = education_profile.language_skills.find(params[:id])
-    skill.destroy!
-    head :no_content
-  end
+      skill = Education::LanguageSkills::Upsert.new(
+        profile: profile,
+        language: payload[:language],
+        level: payload[:level],
+        attrs: payload.except(:language, :level)
+      ).call
 
-  private
+      render json: skill, status: :created
+    end
 
-  def education_profile
-    @education_profile ||= current_user.education_profile || current_user.create_education_profile!
-  end
+    def update
+      profile = load_profile
+      payload = params.require(:language_skill).permit(:language, :level, :certificate_name, :certificate_score)
 
-  def language_skill_params
-    params.require(:language_skill).permit(:language, :level, :certificate_name, :certificate_score)
+      skill = Education::LanguageSkills::Update.new(
+        profile: profile,
+        id: params[:id],
+        attrs: payload
+      ).call
+
+      render json: skill
+    end
+
+    def destroy
+      profile = load_profile
+
+      Education::LanguageSkills::Destroy.new(
+        profile: profile,
+        id: params[:id]
+      ).call
+
+      head :no_content
+    end
+
+    private
+
+    def load_profile
+      Education::Profiles::Load.new(user: current_user).call
+    end
   end
 end
